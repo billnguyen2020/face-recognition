@@ -6,6 +6,8 @@ import numpy as np
 import os
 import time
 
+from tensorflow.keras.models import load_model
+
 from helpers import align_face
 
 # Load Face Detection model
@@ -18,6 +20,13 @@ output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
 starting_time = time.time()
 
+# Face Aligner Object
+shape_predictor = dlib.shape_predictor(
+    'models/facial_landmarks/shape_predictor_5_face_landmarks.dat')
+fa = face_utils.facealigner.FaceAligner(
+    shape_predictor, desiredFaceWidth=112, desiredLeftEye=(0.3, 0.3))
+
+
 # Load Classifier Model
 net = cv2.dnn.readNet("weights/yolov3-face.weights", "cfg/yolov3-face.cfg")
 font = cv2.FONT_HERSHEY_PLAIN
@@ -28,8 +37,8 @@ data_root_path = './data/'
 class_ = input("Who are you?\n")
 
 # Get image index
-image_index = len([c.split('_')[0]
-                   for c in os.listdir(data_root_path) if c == class_])
+image_index = len([c for c in os.listdir(data_root_path)
+                   if c.split('_')[0] == class_])
 
 # Open webcam
 cap = cv2.VideoCapture(0)
@@ -51,7 +60,7 @@ while True:
     net.setInput(blob)
     outs = net.forward(output_layers)
 
-    class_ids = []
+    boxes = []
     confidences = []
 
     for out in outs:
@@ -77,15 +86,9 @@ while True:
     indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.8, 0.3)
 
     for i in range(len(boxes)):
-        if i in indexes: # Remove overlapped boxes
+        if i in indexes:  # Remove overlapped boxes
             x, y, w, h = boxes[i]
             confidence = confidences[i]
-
-            # Draw box
-            color = np.random.uniform((0, 255, 3))
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(frame, label + " " + str(round(confidence, 2)),
-                        (x, y + 30), font, 3, color, 3)
 
             # Save image every 2 frames
             if frame_id % 2 == 0:
@@ -97,8 +100,14 @@ while True:
                 fa_frame = cv2.resize(fa_frame, (160, 160))
 
                 # Save image
-                cv2.imwrite(f'data/{class_}_{image_index}.jpg', aligned_face)
+                cv2.imwrite(f'data/{class_}_{image_index}.jpg', fa_frame)
                 image_index += 1
+
+             # Draw box
+            color = np.random.uniform((0, 255, 3))
+            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(frame, str(round(confidence, 2)),
+                        (x, y + 30), font, 3, color, 3)
 
     elapsed_time = time.time() - starting_time
     fps = frame_id / elapsed_time
